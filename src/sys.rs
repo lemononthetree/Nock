@@ -1580,10 +1580,12 @@ pub fn net_octets() -> Option<(u64, u64)> {
         }
         let t = &*table;
         let n = t.NumEntries as usize;
+        // `Table` is declared as a one-element array (a flexible array member in
+        // C), so take its address; the rows follow it in the same allocation.
         let rows: &[MIB_IF_ROW2] = if n == 0 {
             &[]
         } else {
-            std::slice::from_raw_parts(t.Table, n)
+            std::slice::from_raw_parts(t.Table.as_ptr(), n)
         };
         let (mut phys, mut any) = ((0u64, 0u64), (0u64, 0u64));
         let mut have_phys = false;
