@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Stats page: the Uptime tile is now a Network tile with live download and upload rates (`↓ 1.2 MB/s`, `↑ 340 KB/s`) and a download sparkline. Sampled at the page's existing once-a-second tick, only while the tab is open.
+- Top bar: the optional read-out is now two short lines, `CPU 12%  RAM 63%` over `↓ 1.2M/s  ↑ 340K/s`, in the same slot as before. Tray item renamed to *CPU, RAM and network on the bar*. The 3 s sampling is still the only cost and only runs while the read-out is on; virtual adapters are skipped so traffic is not counted twice.
+
 ## 0.13.0
 
 - Linux preview (X11 / XWayland): the pill, the nine tabs (Media through MPRIS, Controls, Today, Stats, Clipboard, Shelf, Apps, Games, Power) and the top bar with Wi-Fi, Bluetooth, sound, brightness, battery and calendar dropdowns. Packaged as a `.deb` and a user-level tarball; CI builds, tests and smoke-tests both. Not yet on Linux: game sounds, smart pill alerts, reminders, tray menu, buddy and scenes.

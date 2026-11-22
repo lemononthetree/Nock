@@ -385,10 +385,28 @@ impl App {
             hits.push((r, act));
         }
 
-        if let Some((cpu, mem)) = stats {
-            // read-out only: not clickable, so it is not in `hits`
+        if let Some(s) = stats {
+            // read-out only: not clickable, so it is not in `hits`. Two short lines
+            // keep the whole block inside the slot CPU and RAM used before.
             let r = item(118.0);
-            g.text(&format!("CPU {cpu}%  RAM {mem}%"), r, &f.small, th.t2, Align::Center);
+            g.text(
+                &format!("CPU {}%  RAM {}%", s.cpu, s.mem),
+                Rect::new(r.x, r.y - 4.0, r.w, 14.0),
+                &f.tiny,
+                th.t2,
+                Align::Center,
+            );
+            g.text(
+                &format!(
+                    "\u{2193} {}/s  \u{2191} {}/s",
+                    crate::ui::rate_compact(s.rx),
+                    crate::ui::rate_compact(s.tx)
+                ),
+                Rect::new(r.x, r.y + 10.0, r.w, 14.0),
+                &f.tiny,
+                th.t2,
+                Align::Center,
+            );
         }
         bar.left_x = x;
 

@@ -421,7 +421,7 @@ fn on_tray(hwnd: HWND, a: &mut App, lp: LPARAM) {
         let _ = AppendMenuW(menu, MF_STRING | ss, 19, w!("Chime for meeting, battery and break hints"));
         let ab = if a.cfg.auto_break { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | ab, 13, w!("Auto break after focus (5 min)"));
-        let _ = AppendMenuW(menu, MF_STRING | st, 10, w!("CPU and memory on the bar"));
+        let _ = AppendMenuW(menu, MF_STRING | st, 10, w!("CPU, RAM and network on the bar"));
         let res = if a.cfg.reserve_space { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | res, 6, w!("Reserve screen space (when top bar is off)"));
         if let Ok(sub) = CreatePopupMenu() {

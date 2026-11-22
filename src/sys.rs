@@ -1568,6 +1568,56 @@ pub fn mem_percent() -> u32 {
     m.dwMemoryLoad
 }
 
+/// Bytes received and sent so far, summed over the physical adapters.
+/// Virtual adapters (Hyper-V, WSL, Docker, VPN taps) are skipped so their traffic
+/// is not counted twice; when only a virtual one is present it is used instead.
+pub fn net_octets() -> Option<(u64, u64)> {
+    use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2, MIB_IF_ROW2};
+    let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
+    unsafe {
+        if GetIfTable2(&mut table).0 != 0 || table.is_null() {
+            return None;
+        }
+        let t = &*table;
+        let n = t.NumEntries as usize;
+        let rows: &[MIB_IF_ROW2] = if n == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(t.Table, n)
+        };
+        let (mut phys, mut any) = ((0u64, 0u64), (0u64, 0u64));
+        let mut have_phys = false;
+        for r in rows {
+            // a disconnected adapter's counters do not move, so including it
+            // changes nothing; only a MAC and a non-virtual name count as physical
+            let desc = utf16_str(&r.Description);
+            any = (any.0.saturating_add(r.InOctets), any.1.saturating_add(r.OutOctets));
+            if r.PhysicalAddressLength > 0 && !is_virtual_adapter(&desc) {
+                phys = (phys.0.saturating_add(r.InOctets), phys.1.saturating_add(r.OutOctets));
+                have_phys = true;
+            }
+        }
+        FreeMibTable(table as *const std::ffi::c_void);
+        Some(if have_phys { phys } else { any })
+    }
+}
+
+fn utf16_str(buf: &[u16]) -> String {
+    let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..n])
+}
+
+/// Adapter names Windows gives to software interfaces that mirror real traffic.
+fn is_virtual_adapter(desc: &str) -> bool {
+    const VIRTUAL: [&str; 15] = [
+        "loopback", "hyper-v", "vethernet", "virtual", "vmware", "virtualbox",
+        "docker", "wsl", "tailscale", "wireguard", "vpn", "tap-windows",
+        "openvpn", "npcap", "wi-fi direct",
+    ];
+    let d = desc.to_ascii_lowercase();
+    VIRTUAL.iter().any(|m| d.contains(m))
+}
+
 thread_local! {
     static METER: RefCell<Option<(IAudioMeterInformation, std::time::Instant)>> = const { RefCell::new(None) };
 }
@@ -1607,11 +1657,6 @@ pub fn restart_pc() {
 
 pub fn shutdown_pc() {
     shutdown_cmd("/s");
-}
-
-/// Seconds since Windows started.
-pub fn uptime_secs() -> u64 {
-    unsafe { windows::Win32::System::SystemInformation::GetTickCount64() / 1000 }
 }
 
 pub const WM_APPLIST: u32 = 0x8000 + 9; // WM_APP + 9 (8 is radio::WM_BTDONE)

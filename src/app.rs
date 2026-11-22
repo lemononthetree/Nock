@@ -299,9 +299,11 @@ pub struct App {
     pub hits: Vec<Hit>,
     pub hot: Option<Act>,
     drag: Option<Drag>,
-    /// CPU and memory percent for the top bar (when enabled)
-    pub stats: Option<(u32, u32)>,
+    /// CPU, memory and network rates for the top bar (when enabled)
+    pub stats: Option<SysStats>,
     cpu_prev: (u64, u64),
+    /// last network counters and when they were read, for the bar's rate
+    net_prev: Option<(u64, u64, Instant)>,
     pub seek_frac: Option<f32>,
     tracking: bool,
 
@@ -402,8 +404,14 @@ pub struct App {
     /// live numbers for the Stats page
     pub stat_cpu: u32,
     pub stat_mem: u32,
+    /// bytes per second in and out, for the Stats page
+    pub stat_rx: u64,
+    pub stat_tx: u64,
     stat_prev: (u64, u64),
+    stat_net_prev: Option<(u64, u64, Instant)>,
     pub stat_hist: Vec<f32>,
+    /// download history for the network sparkline (bytes per second per sample)
+    pub net_hist: Vec<f32>,
     /// pointer inside the open panel (logical px) and whether the button is held, for the games
     cursor_x: f32,
     cursor_y: f32,
@@ -452,6 +460,16 @@ enum AlertAct {
 
 pub const DEFAULT_ACCENT: Color = Color(0.40, 0.62, 1.0, 1.0);
 
+/// Live numbers for the top-bar read-out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SysStats {
+    pub cpu: u32,
+    pub mem: u32,
+    /// bytes per second since the last sample
+    pub rx: u64,
+    pub tx: u64,
+}
+
 impl App {
     pub fn new(hwnd: HWND, scale: f32) -> Result<App> {
         let max_w = ((EXP_W + MARGIN) * scale).ceil() as i32 + 2;
@@ -496,6 +514,7 @@ impl App {
             drag: None,
             stats: None,
             cpu_prev: (0, 0),
+            net_prev: None,
             seek_frac: None,
             tracking: false,
             media: media::start(hwnd.0 as isize),
@@ -561,8 +580,12 @@ impl App {
             power_confirm: None,
             stat_cpu: 0,
             stat_mem: 0,
+            stat_rx: 0,
+            stat_tx: 0,
             stat_prev: (0, 0),
+            stat_net_prev: None,
             stat_hist: Vec::new(),
+            net_hist: Vec::new(),
             cursor_x: 0.0,
             cursor_y: 0.0,
             mouse_down: false,
@@ -1257,14 +1280,16 @@ impl App {
         self.render();
     }
 
-    /// Start or stop the 3 s CPU/RAM sampling to match the setting.
+    /// Start or stop the 3 s CPU/RAM/network sampling to match the setting.
     pub fn sync_stats(&mut self) {
         if self.cfg.stats || self.glance_kind() == 3 {
             self.cpu_prev = sys::cpu_times();
+            self.net_prev = None;
             self.set_timer(T_STATS, 3000);
         } else {
             self.kill_timer(T_STATS);
             self.stats = None;
+            self.net_prev = None;
         }
     }
 
@@ -1448,13 +1473,21 @@ impl App {
         let on_bar = self.cfg.stats && self.bar_visible();
         let on_pill = self.glance_kind() == 3 && !self.hidden;
         if !on_bar && !on_pill {
+            // a resumed read-out must not treat the pause as traffic
+            self.net_prev = None;
             return;
         }
         let (idle, total) = sys::cpu_times();
         let (di, dt) = (idle.wrapping_sub(self.cpu_prev.0), total.wrapping_sub(self.cpu_prev.1));
         self.cpu_prev = (idle, total);
         let cpu = if dt == 0 { 0 } else { (100 - (di.min(dt) * 100 / dt)) as u32 };
-        let now = Some((cpu, sys::mem_percent()));
+        let (rx, tx) = if on_bar {
+            net_rate(&mut self.net_prev)
+        } else {
+            self.net_prev = None;
+            (0, 0)
+        };
+        let now = Some(SysStats { cpu, mem: sys::mem_percent(), rx, tx });
         if now != self.stats {
             let first = self.stats.is_none();
             self.stats = now;
@@ -2000,9 +2033,16 @@ impl App {
                 }
                 self.stat_prev = (idle, total);
                 self.stat_mem = sys::mem_percent();
+                let (rx, tx) = net_rate(&mut self.stat_net_prev);
+                self.stat_rx = rx;
+                self.stat_tx = tx;
                 self.stat_hist.push(self.stat_cpu as f32 / 100.0);
                 if self.stat_hist.len() > 40 {
                     self.stat_hist.remove(0);
+                }
+                self.net_hist.push(rx as f32);
+                if self.net_hist.len() > 40 {
+                    self.net_hist.remove(0);
                 }
                 self.retarget(); // the bars glide to the new values
             }
@@ -2944,7 +2984,7 @@ mod preview {
         a.mstate.dur_ticks = 62 * 60 * 10_000_000 / 60;
         a.radios.wifi = Some(true);
         a.radios.bluetooth = Some(false);
-        a.stats = Some((23, 61));
+        a.stats = Some(SysStats { cpu: 23, mem: 61, rx: 1_258_291, tx: 348_160 });
         let render = |a: &App, name: &str| {
             let (pw, ph) = ((EXP_W * scale) as i32, (EXP_H * scale) as i32);
             a.gfx.begin(pw, ph).unwrap();
@@ -2966,6 +3006,9 @@ mod preview {
             a.page = page;
             a.snap_tab();
             (a.stat_cpu, a.stat_mem, a.bar_cpu, a.bar_mem) = (23, 61, 0.23, 0.61);
+            a.stat_rx = 1_258_291;
+            a.stat_tx = 348_160;
+            a.net_hist = (0..40).map(|i| 180_000.0 + 140_000.0 * ((i as f32) * 0.45).sin().abs()).collect();
             render(&a, &name);
         }
         // Next pressed: the old track stays up with a spinner while the player loads
@@ -3079,9 +3122,12 @@ mod preview {
         a.stat_mem = 61;
         (a.bar_cpu, a.bar_mem) = (0.23, 0.61);
         a.stat_hist = (0..40).map(|i| 0.15 + 0.12 * ((i as f32) * 0.5).sin().abs() + (i as f32 % 7.0) * 0.02).collect();
+        a.stat_rx = 1_258_291;
+        a.stat_tx = 348_160;
+        a.net_hist = (0..40).map(|i| 180_000.0 + 140_000.0 * ((i as f32) * 0.45).sin().abs()).collect();
         a.radios.wifi = Some(true);
         a.radios.bluetooth = Some(false);
-        a.stats = Some((23, 61));
+        a.stats = Some(SysStats { cpu: 23, mem: 61, rx: 1_258_291, tx: 348_160 });
         let mut list: Vec<String> = Vec::new();
         let mut n = 0;
         let mut shot = |a: &App, w: f32, h: f32, ms: u32, caption: &str| {
@@ -3255,6 +3301,9 @@ mod preview {
         a.stat_mem = 61;
         (a.bar_cpu, a.bar_mem) = (0.23, 0.61);
         a.stat_hist = (0..40).map(|i| 0.15 + 0.12 * ((i as f32) * 0.5).sin().abs() + (i as f32 % 7.0) * 0.02).collect();
+        a.stat_rx = 1_258_291;
+        a.stat_tx = 348_160;
+        a.net_hist = (0..40).map(|i| 180_000.0 + 140_000.0 * ((i as f32) * 0.45).sin().abs()).collect();
         a.stats = None;
 
         // ---- the bar, plain and with each icon hovered / its dropdown open
@@ -3396,7 +3445,7 @@ mod preview {
             save(name, gw, ih, bw, &buf);
         }
         a.cfg.idle_glance = 3;
-        a.stats = Some((12, 63));
+        a.stats = Some(SysStats { cpu: 12, mem: 63, rx: 409_600, tx: 92_160 });
         let gw = ((COL_IDLE_W + a.glance_extra_w()) * scale) as i32;
         a.gfx.begin(gw, ih).unwrap();
         let mut hg = Vec::new();
@@ -3584,7 +3633,7 @@ pub struct GlanceIn {
     pub has_todos: bool,
     pub left: usize,
     pub focus_min: u32,
-    pub stats: Option<(u32, u32)>,
+    pub stats: Option<SysStats>,
     pub meeting: Option<String>,
     pub date: String,
 }
@@ -3595,11 +3644,42 @@ pub fn glance_text(g: &GlanceIn) -> Option<(String, f32)> {
     match g.kind {
         1 if g.has_todos => Some((format!("{} left", g.left), 64.0)),
         2 => Some((format!("{} min", g.focus_min), 58.0)),
-        3 => g.stats.map(|(c, m)| (format!("CPU {c}% RAM {m}%"), 112.0)),
+        3 => g.stats.map(|s| (format!("CPU {}% RAM {}%", s.cpu, s.mem), 112.0)),
         4 => g.meeting.clone().map(|m| (m, 142.0)),
         5 => Some((g.date.clone(), 76.0)),
         _ => None,
     }
+}
+
+/// Bytes per second from two counter readings `secs` apart.
+fn rate_of(now: u64, before: u64, secs: f64) -> u64 {
+    if secs <= 0.0 {
+        return 0;
+    }
+    ((now.saturating_sub(before) as f64 / secs).min(2_000_000_000.0)) as u64
+}
+
+/// Sample the network counters and turn them into a rate. The first reading, and
+/// one taken too soon after the last, report 0 so a pause never shows as a spike.
+fn net_rate(prev: &mut Option<(u64, u64, Instant)>) -> (u64, u64) {
+    let Some((rx, tx)) = sys::net_octets() else {
+        *prev = None;
+        return (0, 0);
+    };
+    let now = Instant::now();
+    let rate = match *prev {
+        Some((prx, ptx, t0)) => {
+            let secs = now.duration_since(t0).as_secs_f64();
+            if secs >= 0.2 {
+                (rate_of(rx, prx, secs), rate_of(tx, ptx, secs))
+            } else {
+                (0, 0)
+            }
+        }
+        None => (0, 0),
+    };
+    *prev = Some((rx, tx, now));
+    rate
 }
 
 /// Cut `s` to at most `max` characters, ending with an ellipsis when it was longer.
@@ -3659,7 +3739,7 @@ mod glance_tests {
     use super::*;
 
     fn g(kind: u8) -> GlanceIn {
-        GlanceIn { kind, has_todos: true, left: 3, focus_min: 42, stats: Some((12, 63)), meeting: Some("Standup 10:30".into()), date: "Sun 1 Nov".into() }
+        GlanceIn { kind, has_todos: true, left: 3, focus_min: 42, stats: Some(SysStats { cpu: 12, mem: 63, rx: 409_600, tx: 92_160 }), meeting: Some("Standup 10:30".into()), date: "Sun 1 Nov".into() }
     }
 
     #[test]
