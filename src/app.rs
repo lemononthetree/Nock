@@ -302,8 +302,8 @@ pub struct App {
     /// CPU, memory and network rates for the top bar (when enabled)
     pub stats: Option<SysStats>,
     cpu_prev: (u64, u64),
-    /// last network counters and when they were read, for the bar's rate
-    net_prev: Option<(u64, u64, Instant)>,
+    /// network meter for the bar's rate
+    net: NetMeter,
     pub seek_frac: Option<f32>,
     tracking: bool,
 
@@ -408,7 +408,8 @@ pub struct App {
     pub stat_rx: u64,
     pub stat_tx: u64,
     stat_prev: (u64, u64),
-    stat_net_prev: Option<(u64, u64, Instant)>,
+    /// network meter for the Stats page
+    stat_net: NetMeter,
     pub stat_hist: Vec<f32>,
     /// download history for the network sparkline (bytes per second per sample)
     pub net_hist: Vec<f32>,
@@ -470,6 +471,61 @@ pub struct SysStats {
     pub tx: u64,
 }
 
+/// Turns two counter readings into a byte rate.
+///
+/// A fresh rate is only computed once at least `MIN_SECS` have passed, and the
+/// last good rate is kept in between: Windows updates the interface counters in
+/// its own time, so dividing a coarse step by a short gap would report a burst
+/// several times larger than the real traffic.
+#[derive(Default)]
+struct NetMeter {
+    prev: Option<(u64, u64, Instant)>,
+    /// last good rate in bytes per second
+    rate: (u64, u64),
+    /// description of the adapter being read, for the Stats tile
+    name: String,
+}
+
+impl NetMeter {
+    const MIN_SECS: f64 = 2.0;
+
+    fn reset(&mut self) {
+        self.prev = None;
+        self.rate = (0, 0);
+        self.name.clear();
+    }
+
+    fn sample(&mut self) -> (u64, u64) {
+        let Some(c) = sys::net_counters() else {
+            self.reset();
+            return (0, 0);
+        };
+        self.name = c.name;
+        let now = Instant::now();
+        match self.prev {
+            Some((prx, ptx, t0)) => {
+                let secs = now.duration_since(t0).as_secs_f64();
+                if secs >= Self::MIN_SECS {
+                    // nothing can move more than the link allows (plus a margin for
+                    // driver overhead), so a bad reading cannot show a fantasy rate
+                    let cap = if c.link_bps > 0 {
+                        c.link_bps / 8 + c.link_bps / 160
+                    } else {
+                        u64::MAX
+                    };
+                    self.rate = (
+                        rate_of(c.rx, prx, secs).min(cap),
+                        rate_of(c.tx, ptx, secs).min(cap),
+                    );
+                    self.prev = Some((c.rx, c.tx, now));
+                }
+            }
+            None => self.prev = Some((c.rx, c.tx, now)),
+        }
+        self.rate
+    }
+}
+
 impl App {
     pub fn new(hwnd: HWND, scale: f32) -> Result<App> {
         let max_w = ((EXP_W + MARGIN) * scale).ceil() as i32 + 2;
@@ -514,7 +570,7 @@ impl App {
             drag: None,
             stats: None,
             cpu_prev: (0, 0),
-            net_prev: None,
+            net: NetMeter::default(),
             seek_frac: None,
             tracking: false,
             media: media::start(hwnd.0 as isize),
@@ -583,7 +639,7 @@ impl App {
             stat_rx: 0,
             stat_tx: 0,
             stat_prev: (0, 0),
-            stat_net_prev: None,
+            stat_net: NetMeter::default(),
             stat_hist: Vec::new(),
             net_hist: Vec::new(),
             cursor_x: 0.0,
@@ -764,6 +820,11 @@ impl App {
         } else {
             (COL_IDLE_W + self.glance_extra_w(), self.col_h())
         }
+    }
+
+    /// Description of the adapter the Stats page rates come from ("Intel(R) Wi-Fi 6 AX101").
+    pub fn net_adapter(&self) -> &str {
+        &self.stat_net.name
     }
 
     /// Text and reserved width (fixed, so numbers never jitter) of the idle glance slot.
@@ -1284,12 +1345,12 @@ impl App {
     pub fn sync_stats(&mut self) {
         if self.cfg.stats || self.glance_kind() == 3 {
             self.cpu_prev = sys::cpu_times();
-            self.net_prev = None;
+            self.net.reset();
             self.set_timer(T_STATS, 3000);
         } else {
             self.kill_timer(T_STATS);
             self.stats = None;
-            self.net_prev = None;
+            self.net.reset();
         }
     }
 
@@ -1474,7 +1535,7 @@ impl App {
         let on_pill = self.glance_kind() == 3 && !self.hidden;
         if !on_bar && !on_pill {
             // a resumed read-out must not treat the pause as traffic
-            self.net_prev = None;
+            self.net.reset();
             return;
         }
         let (idle, total) = sys::cpu_times();
@@ -1482,9 +1543,9 @@ impl App {
         self.cpu_prev = (idle, total);
         let cpu = if dt == 0 { 0 } else { (100 - (di.min(dt) * 100 / dt)) as u32 };
         let (rx, tx) = if on_bar {
-            net_rate(&mut self.net_prev)
+            self.net.sample()
         } else {
-            self.net_prev = None;
+            self.net.reset();
             (0, 0)
         };
         let now = Some(SysStats { cpu, mem: sys::mem_percent(), rx, tx });
@@ -2033,7 +2094,7 @@ impl App {
                 }
                 self.stat_prev = (idle, total);
                 self.stat_mem = sys::mem_percent();
-                let (rx, tx) = net_rate(&mut self.stat_net_prev);
+                let (rx, tx) = self.stat_net.sample();
                 self.stat_rx = rx;
                 self.stat_tx = tx;
                 self.stat_hist.push(self.stat_cpu as f32 / 100.0);
@@ -3659,29 +3720,6 @@ fn rate_of(now: u64, before: u64, secs: f64) -> u64 {
     ((now.saturating_sub(before) as f64 / secs).min(2_000_000_000.0)) as u64
 }
 
-/// Sample the network counters and turn them into a rate. The first reading, and
-/// one taken too soon after the last, report 0 so a pause never shows as a spike.
-fn net_rate(prev: &mut Option<(u64, u64, Instant)>) -> (u64, u64) {
-    let Some((rx, tx)) = sys::net_octets() else {
-        *prev = None;
-        return (0, 0);
-    };
-    let now = Instant::now();
-    let rate = match *prev {
-        Some((prx, ptx, t0)) => {
-            let secs = now.duration_since(t0).as_secs_f64();
-            if secs >= 0.2 {
-                (rate_of(rx, prx, secs), rate_of(tx, ptx, secs))
-            } else {
-                (0, 0)
-            }
-        }
-        None => (0, 0),
-    };
-    *prev = Some((rx, tx, now));
-    rate
-}
-
 /// Cut `s` to at most `max` characters, ending with an ellipsis when it was longer.
 pub fn ellipsize(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
@@ -3753,6 +3791,16 @@ mod glance_tests {
         assert_eq!(glance_text(&GlanceIn { meeting: None, ..g(4) }), None);
         assert_eq!(glance_text(&g(5)).map(|x| x.0), Some("Sun 1 Nov".to_string()));
         assert_eq!(glance_text(&g(0)), None);
+    }
+
+    #[test]
+    fn network_rate_math_handles_resets_and_short_windows() {
+        assert_eq!(rate_of(2048, 0, 2.0), 1024);
+        // counters that went backwards (adapter reconnected) never read negative
+        assert_eq!(rate_of(1000, 4000, 3.0), 0);
+        // no elapsed time: no rate rather than a division by zero
+        assert_eq!(rate_of(5000, 0, 0.0), 0);
+        assert_eq!(rate_of(4_000_000_000, 0, 1.0), 2_000_000_000);
     }
 
     #[test]

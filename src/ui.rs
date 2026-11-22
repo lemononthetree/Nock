@@ -761,7 +761,7 @@ fn page_stats(a: &App, ca: f32) {
         }
         None => stat_tile(g, at(0.0, 1.0), '\u{E83F}', "Power", "Plugged in", "No battery", None, C_BAT, ca),
     }
-    net_tile(g, at(1.0, 1.0), a.stat_rx, a.stat_tx, &a.net_hist, ca);
+    net_tile(g, at(1.0, 1.0), a.stat_rx, a.stat_tx, &a.net_hist, a.net_adapter(), ca);
 }
 
 /// "340 KB/s", "1.2 MB/s", "0 KB/s": the Stats tile.
@@ -812,11 +812,21 @@ pub fn rate_short(bps: u64) -> String {
 }
 
 /// The Network tile: download above, upload below, and a download sparkline.
-fn net_tile(g: &Gfx, r: Rect, rx: u64, tx: u64, hist: &[f32], ca: f32) {
+fn net_tile(g: &Gfx, r: Rect, rx: u64, tx: u64, hist: &[f32], adapter: &str, ca: f32) {
     let f = &g.fonts;
     g.fill_rrect(r, 20.0, SURF.fade(ca));
     g.icon('\u{E774}', Rect::new(r.x + 14.0, r.y + 12.0, 22.0, 22.0), &f.icon14, C_CPU.fade(ca));
-    g.text("Network", Rect::new(r.x + 42.0, r.y + 12.0, 120.0, 22.0), &f.small, T3.fade(ca), Align::Left);
+    g.text("Network", Rect::new(r.x + 42.0, r.y + 12.0, 80.0, 22.0), &f.small, T3.fade(ca), Align::Left);
+    // which adapter is being read, so a reading can always be traced back to one
+    if !adapter.is_empty() {
+        g.text(
+            &ellipsize(adapter, 20),
+            Rect::new(r.x + r.w - 166.0, r.y + 12.0, 152.0, 22.0),
+            &f.tiny,
+            T3.fade(ca),
+            Align::Right,
+        );
+    }
     for (i, (glyph, value, col)) in [('\u{2193}', rx, C_CPU), ('\u{2191}', tx, C_UP)].iter().enumerate() {
         let y = r.y + 32.0 + i as f32 * 18.0;
         g.text(&glyph.to_string(), Rect::new(r.x + 16.0, y, 14.0, 18.0), &f.small, col.fade(ca), Align::Left);

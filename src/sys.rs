@@ -1568,15 +1568,23 @@ pub fn mem_percent() -> u32 {
     m.dwMemoryLoad
 }
 
-/// Bytes received and sent so far, from the Wi-Fi adapter only.
+/// Cumulative bytes of the one adapter the rates are read from, plus which one it is.
+pub struct NetCounters {
+    pub rx: u64,
+    pub tx: u64,
+    /// "Intel(R) Wi-Fi 6 AX101" and so on, for the Stats tile.
+    pub name: String,
+    /// Receive link speed in bits per second (0 when Windows does not say).
+    pub link_bps: u64,
+}
+
+/// Counters for exactly one adapter.
 ///
-/// Other adapters are left out on purpose: with a dock, Hyper-V, WSL, Docker or a
-/// VPN, several interfaces carry the same packets, and adding them up reports far
-/// more traffic than actually left the machine. Ethernet is used only when the PC
-/// has no Wi-Fi adapter at all, so a wired desktop still gets a reading, and
-/// virtual adapters ("Microsoft Wi-Fi Direct Virtual Adapter" and friends) are
-/// always ignored.
-pub fn net_octets() -> Option<(u64, u64)> {
+/// Only a single interface is ever read. With a dock, Hyper-V, WSL, Docker or a
+/// VPN, several interfaces carry copies of the same packets, and adding them up
+/// reports far more traffic than actually left the machine. Wi-Fi (802.11) wins
+/// over Ethernet, and interfaces whose name says they are virtual are ignored.
+pub fn net_counters() -> Option<NetCounters> {
     use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2, MIB_IF_ROW2};
     let mut table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
     unsafe {
@@ -1592,30 +1600,33 @@ pub fn net_octets() -> Option<(u64, u64)> {
         } else {
             std::slice::from_raw_parts(t.Table.as_ptr(), n)
         };
-        let (mut wifi, mut wifi_n) = ((0u64, 0u64), 0usize);
-        let (mut eth, mut eth_n) = ((0u64, 0u64), 0usize);
+        let (mut wifi, mut eth): (Option<NetCounters>, Option<NetCounters>) = (None, None);
         for r in rows {
+            let name = utf16_str(&r.Description);
             // a software interface mirrors traffic that a real one already counts
-            if is_virtual_adapter(&utf16_str(&r.Description)) {
+            if is_virtual_adapter(&name) {
                 continue;
             }
+            let c = NetCounters {
+                rx: r.InOctets,
+                tx: r.OutOctets,
+                name,
+                link_bps: r.ReceiveLinkSpeed,
+            };
             // 71 = IF_TYPE_IEEE80211, 6 = IF_TYPE_ETHERNET_CSMACD (ipifcons.h)
-            if r.Type == 71 {
-                wifi = (wifi.0.saturating_add(r.InOctets), wifi.1.saturating_add(r.OutOctets));
-                wifi_n += 1;
-            } else if r.Type == 6 {
-                eth = (eth.0.saturating_add(r.InOctets), eth.1.saturating_add(r.OutOctets));
-                eth_n += 1;
+            let slot = match r.Type {
+                71 => &mut wifi,
+                6 => &mut eth,
+                _ => continue,
+            };
+            // two adapters of the same kind: follow the one that has carried more
+            let busier = slot.as_ref().map_or(true, |b| c.rx.saturating_add(c.tx) > b.rx.saturating_add(b.tx));
+            if busier {
+                *slot = Some(c);
             }
         }
         FreeMibTable(table as *const std::ffi::c_void);
-        if wifi_n > 0 {
-            Some(wifi)
-        } else if eth_n > 0 {
-            Some(eth)
-        } else {
-            None
-        }
+        wifi.or(eth)
     }
 }
 

@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Stats page: the Uptime tile is now a Network tile with live download and upload rates (`↓ 1.2 MB/s`, `↑ 340 KB/s`) and a download sparkline. Sampled at the page's existing once-a-second tick, only while the tab is open.
-- Top bar: the optional read-out is now one line, `CPU 12% RAM 63% ↓1.2MB/s ↑340KB/s`, with the rate units stepping up from B/s to KB/s, MB/s and GB/s. Tray item renamed to *CPU, RAM and network on the bar*. The 3 s sampling is still the only cost and only runs while the read-out is on.
-- Network rates read the Wi-Fi adapter only (Ethernet on a PC without Wi-Fi) instead of adding every physical adapter, which over-reported the traffic whenever more than one interface carried the same packets.
+- Top bar: the optional read-out is now two short lines, `CPU 12% RAM 63%` over `↓ 1.2MB/s ↑ 340KB/s`, with the rate units stepping up from B/s to KB/s, MB/s and GB/s. Tray item renamed to *CPU, RAM and network on the bar*. The 3 s sampling is still the only cost and only runs while the read-out is on.
+- Network rates read exactly one adapter (the Wi-Fi one, Ethernet on a PC without Wi-Fi) instead of adding physical adapters, which over-reported the traffic whenever more than one interface carried the same packets. A rate now needs a window of at least two seconds, so a coarse counter update cannot show up as a burst, and it is capped at the adapter's link speed. The Stats tile names the adapter being read.
 
 ## 0.13.0
 
