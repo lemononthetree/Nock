@@ -785,19 +785,28 @@ pub fn rate_text(bps: u64) -> String {
     }
 }
 
-/// "340K", "1.2M", "0": the same rate without the unit, for the top bar.
-pub fn rate_compact(bps: u64) -> String {
-    let kb = bps as f64 / 1024.0;
-    if kb < 0.5 {
-        "0".to_string()
-    } else if kb < 1000.0 {
-        format!("{:.0}K", kb)
-    } else {
-        let mb = kb / 1024.0;
+/// "340KB/s", "1.2MB/s", "0B/s": the same rate with its unit, for the top bar.
+/// The unit steps up as the number grows, so the wide read-out stays short.
+pub fn rate_short(bps: u64) -> String {
+    let b = bps as f64;
+    const KB: f64 = 1024.0;
+    if b < KB {
+        format!("{:.0}B/s", b)
+    } else if b < KB * KB {
+        format!("{:.0}KB/s", b / KB)
+    } else if b < KB * KB * KB {
+        let mb = b / (KB * KB);
         if mb < 10.0 {
-            format!("{:.1}M", mb)
+            format!("{:.1}MB/s", mb)
         } else {
-            format!("{:.0}M", mb)
+            format!("{:.0}MB/s", mb)
+        }
+    } else {
+        let gb = b / (KB * KB * KB);
+        if gb < 10.0 {
+            format!("{:.1}GB/s", gb)
+        } else {
+            format!("{:.0}GB/s", gb)
         }
     }
 }
@@ -1487,9 +1496,13 @@ mod tests {
         assert_eq!(rate_text(100 * 1024), "100 KB/s");
         assert_eq!(rate_text(1024 * 1024), "1.0 MB/s");
         assert_eq!(rate_text(2_500_000), "2.4 MB/s");
-        assert_eq!(rate_compact(0), "0");
-        assert_eq!(rate_compact(1024), "1K");
-        assert_eq!(rate_compact(348_160), "340K");
-        assert_eq!(rate_compact(1_500_000), "1.4M");
+        // the bar keeps the unit attached so it reads "↓1.2MB/s ↑340KB/s"
+        assert_eq!(rate_short(0), "0B/s");
+        assert_eq!(rate_short(512), "512B/s");
+        assert_eq!(rate_short(1024), "1KB/s");
+        assert_eq!(rate_short(348_160), "340KB/s");
+        assert_eq!(rate_short(1_258_291), "1.2MB/s");
+        assert_eq!(rate_short(60 * 1024 * 1024), "60MB/s");
+        assert_eq!(rate_short(2 * 1024 * 1024 * 1024), "2.0GB/s");
     }
 }

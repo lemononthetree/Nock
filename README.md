@@ -148,7 +148,7 @@ A thin translucent bar runs along the top of the screen and the notch hangs from
 
 **Clock style** (tray → *Clock style*): digital (default), analog, binary, or "hours until Friday". **24-hour clock** (tray → *24-hour clock*, or `clock_24h=1`) shows 13:05 instead of 1:05 PM on the bar, the pill and the clock pop-up.
 
-**CPU, RAM and network** (tray → *CPU, RAM and network on the bar*): two short lines, `CPU 12%  RAM 63%` over `↓ 1.2M/s  ↑ 340K/s`, off by default.
+**CPU, RAM and network** (tray → *CPU, RAM and network on the bar*): one line, `CPU 12% RAM 63% ↓1.2MB/s ↑340KB/s`, off by default. The rate units step up from B/s to KB/s, MB/s and GB/s as the numbers grow.
 
 A dropdown closes when the pointer leaves it, when you click into another window, or when you click its icon again. The bar follows the Windows light/dark setting; the notch itself always stays black. It reserves its space like the taskbar does, so maximised windows start below it. Tray → *Top bar* turns it off (the old notch-only behaviour returns); `top_bar` in `config.ini` does the same.
 
@@ -288,7 +288,7 @@ It is a native Rust program with no web view and no background polling, so it av
 - Wi-Fi and Bluetooth buttons in the top bar toggle the radio through the Windows Radios API. If Windows exposes no such radio (or denies access) the button opens the matching Settings page instead.
 - Brightness on laptop panels is set through the display driver directly (instant, follows the slider as you drag). If the driver does not offer that, it falls back to a slower WMI call through PowerShell.
 - The volume slider follows the Windows default output device. Apps routed to a different device under Settings → Sound → Volume mixer aren't affected.
-- Network rates add up the physical adapters that are up. Virtual adapters (Hyper-V, WSL, Docker, VPN tunnels) are skipped so their traffic is not counted twice, so traffic that only goes through a VPN may read lower than the numbers in its own client.
+- Network rates come from the Wi-Fi adapter only (Ethernet is used on a PC with no Wi-Fi adapter), because dock, Hyper-V, WSL, Docker and VPN interfaces carry copies of the same packets and adding them up over-reports the traffic. Virtual interfaces such as *Microsoft Wi-Fi Direct Virtual Adapter* are ignored.
 - *Sleep* uses the standard suspend call; if hibernation is enabled on your PC Windows may hibernate instead.
 - The calendar shows the month only (no events). There is no weather or notification peek.
 - The games are mouse only, because the notch never takes keyboard focus from your other apps. The to-do, search and timer boxes take typed characters only (no IME composition).

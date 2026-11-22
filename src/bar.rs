@@ -386,26 +386,21 @@ impl App {
         }
 
         if let Some(s) = stats {
-            // read-out only: not clickable, so it is not in `hits`. Two short lines
-            // keep the whole block inside the slot CPU and RAM used before.
-            let r = item(118.0);
-            g.text(
-                &format!("CPU {}%  RAM {}%", s.cpu, s.mem),
-                Rect::new(r.x, r.y - 4.0, r.w, 14.0),
-                &f.tiny,
-                th.t2,
-                Align::Center,
-            );
+            // read-out only: not clickable, so it is not in `hits`. One line, and
+            // right-aligned so growing numbers spread left instead of shifting.
+            let r = item(204.0);
             g.text(
                 &format!(
-                    "\u{2193} {}/s  \u{2191} {}/s",
-                    crate::ui::rate_compact(s.rx),
-                    crate::ui::rate_compact(s.tx)
+                    "CPU {}% RAM {}% \u{2193}{} \u{2191}{}",
+                    s.cpu,
+                    s.mem,
+                    crate::ui::rate_short(s.rx),
+                    crate::ui::rate_short(s.tx)
                 ),
-                Rect::new(r.x, r.y + 10.0, r.w, 14.0),
+                r,
                 &f.tiny,
                 th.t2,
-                Align::Center,
+                Align::Right,
             );
         }
         bar.left_x = x;
