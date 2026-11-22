@@ -142,6 +142,21 @@ fn main() -> Result<()> {
             Some(hinst),
             None,
         )?;
+        // click-through read-out that sits over the Windows taskbar
+        let tsk_hwnd = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+            class,
+            w!(""),
+            WS_POPUP,
+            0,
+            0,
+            10,
+            10,
+            None,
+            None,
+            Some(hinst),
+            None,
+        )?;
         if let Some(a) = app() {
             a.buddy = buddy::Buddy::new(buddy_hwnd, a.scale);
             a.stage = scene::Stage::new(stage_hwnd, a.scale);
@@ -153,6 +168,7 @@ fn main() -> Result<()> {
             sys::sync_start_menu(a.cfg.start_menu);
             let mon_w = a.mon.right - a.mon.left;
             a.bar = bar::Bar::new(bar_hwnd, mon_w, a.scale);
+            a.taskbar = taskbar::TaskbarReadout::new(tsk_hwnd, a.scale);
             a.pop = pop::Pop::new(pop_hwnd, a.scale);
         }
 
@@ -192,6 +208,7 @@ fn main() -> Result<()> {
             a.on_foreground();
             a.update_reserve();
             a.sync_bar();
+            a.sync_taskbar();
             a.load_brightness_once();
             a.on_media(); // pick up anything the media thread already found
             a.render();
@@ -278,7 +295,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
     if a.is_pop(hwnd) {
         return a.pop_msg(hwnd, msg, wp, lp);
     }
-    if a.is_buddy(hwnd) || a.is_stage(hwnd) {
+    if a.is_buddy(hwnd) || a.is_stage(hwnd) || a.is_taskbar(hwnd) {
         return DefWindowProcW(hwnd, msg, wp, lp);
     }
     match msg {
@@ -407,6 +424,7 @@ fn on_tray(hwnd: HWND, a: &mut App, lp: LPARAM) {
         let tb = if a.cfg.top_bar { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | tb, 7, w!("Top bar"));
         let st = if a.cfg.stats { MF_CHECKED } else { MF_UNCHECKED };
+        let tsk = if a.cfg.stats_taskbar { MF_CHECKED } else { MF_UNCHECKED };
         let fh = if a.cfg.fs_hide { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | fh, 16, w!("Hide in full-screen apps"));
         let ah = if a.cfg.auto_hide { MF_CHECKED } else { MF_UNCHECKED };
@@ -422,6 +440,7 @@ fn on_tray(hwnd: HWND, a: &mut App, lp: LPARAM) {
         let ab = if a.cfg.auto_break { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | ab, 13, w!("Auto break after focus (5 min)"));
         let _ = AppendMenuW(menu, MF_STRING | st, 10, w!("CPU, RAM and network on the bar"));
+        let _ = AppendMenuW(menu, MF_STRING | tsk, 12, w!("CPU, RAM and network in the taskbar (right-aligned)"));
         let res = if a.cfg.reserve_space { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | res, 6, w!("Reserve screen space (when top bar is off)"));
         if let Ok(sub) = CreatePopupMenu() {
@@ -550,6 +569,7 @@ fn on_tray(hwnd: HWND, a: &mut App, lp: LPARAM) {
             6 => a.toggle_reserve(),
             7 => a.toggle_top_bar(),
             10 => a.toggle_stats(),
+            12 => a.toggle_stats_taskbar(),
             11 => a.toggle_clock24(),
             13 => a.toggle_auto_break(),
             16 => a.toggle_fs_hide(),

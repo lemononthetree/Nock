@@ -54,6 +54,8 @@ pub struct Config {
     pub scene_min: u8,
     /// CPU, memory and network rates read-out on the top bar.
     pub stats: bool,
+    /// Draw the same read-out over the Windows taskbar, right-aligned, instead of on the top bar.
+    pub stats_taskbar: bool,
     /// Top bar clock: 0 digital, 1 analog, 2 binary, 3 countdown to Friday.
     pub clock_style: u8,
     /// Minutes between water reminders (0 = off).
@@ -114,6 +116,8 @@ scenes=1
 scene_min=5
 # CPU and memory read-out on the top bar: 1 = on
 stats=0
+# draw the same read-out over the Windows taskbar, right-aligned: 1 = on
+stats_taskbar=0
 # top bar clock: 0 = digital, 1 = analog, 2 = binary, 3 = countdown to Friday
 clock_style=0
 # minutes between water reminders (0 = off)
@@ -178,6 +182,7 @@ pub fn load_config() -> Config {
         scenes: true,
         scene_min: 5,
         stats: false,
+        stats_taskbar: false,
         clock_style: 0,
         water_min: 0,
         auto_break: false,
@@ -216,6 +221,7 @@ pub fn load_config() -> Config {
                 "top_bar" => cfg.top_bar = on,
                 "scenes" => cfg.scenes = on,
                 "stats" => cfg.stats = on,
+                "stats_taskbar" => cfg.stats_taskbar = on,
                 "auto_break" => cfg.auto_break = on,
                 "start_menu" => cfg.start_menu = on,
                 "fs_hide" => cfg.fs_hide = on,
@@ -251,7 +257,7 @@ pub fn load_config() -> Config {
     }
     // A config file from an older version lacks the newer settings: write the
     // file back with every setting present (keeping the user's values).
-    let keys = ["hover_expand", "eq_animation", "clock_24h", "reserve_space", "top_bar", "buddy", "scenes", "scene_min", "stats", "clock_style", "water_min", "auto_break", "eye_min", "start_menu", "fs_hide", "auto_hide", "smart_hide", "auto_close", "smart", "calendar_url", "smart_sound", "monitor", "idle_glance", "idle_focus_bar", "idle_meeting_hours", "day_line", "day_start", "day_end", "idle_cycle", "state_dot", "peek"];
+    let keys = ["hover_expand", "eq_animation", "clock_24h", "reserve_space", "top_bar", "buddy", "scenes", "scene_min", "stats", "stats_taskbar", "clock_style", "water_min", "auto_break", "eye_min", "start_menu", "fs_hide", "auto_hide", "smart_hide", "auto_close", "smart", "calendar_url", "smart_sound", "monitor", "idle_glance", "idle_focus_bar", "idle_meeting_hours", "day_line", "day_start", "day_end", "idle_cycle", "state_dot", "peek"];
     let present = |k: &str| text.lines().any(|l| l.trim().split_once('=').map(|(a, _)| a.trim() == k).unwrap_or(false));
     if keys.iter().any(|k| !present(k)) {
         save_config(&cfg);
@@ -262,7 +268,7 @@ pub fn load_config() -> Config {
 pub fn save_config(c: &Config) {
     let b = |v: bool| if v { 1 } else { 0 };
     let text = format!(
-        "# Nock settings (1 = on, 0 = off)\nhover_expand={}\neq_animation={}\nclock_24h={}\nreserve_space={}\ntop_bar={}\n# buddy: 0 = off, 2 = cat, 5 = robot, 6 = ronin, 7 = courier, 8 = necromancer (1, 3 and 4 were retired and now give the robot)\nbuddy={}\n# fight scenes now and then (needs a buddy): 1 = on\nscenes={}\n# average minutes between scenes (1 to 60)\nscene_min={}\n# CPU, RAM and network rate read-out on the top bar: 1 = on\nstats={}\n# top bar clock: 0 = digital, 1 = analog, 2 = binary, 3 = countdown to Friday\nclock_style={}\n# minutes between water reminders (0 = off)\nwater_min={}\n# after a focus session start a 5 minute break, then focus again: 1 = on\nauto_break={}\n# minutes between look-away reminders for your eyes (0 = off)\neye_min={}\n# a Start Menu shortcut so typing Nock in Windows search finds it: 1 = on\nstart_menu={}\n# hide the notch and bar while a full-screen app or game is in front: 1 = on\nfs_hide={}\n# keep the notch and bar hidden until the pointer touches the top edge: 1 = on\nauto_hide={}\n# fade the notch out while a window covers it, and back in when the window moves away: 1 = on\nsmart_hide={}\n# close the open panel when the pointer leaves it or another window comes to the front: 1 = on\nauto_close={}\n# smart notch hints (low battery, take a break after 90 min at the PC, link/code copied): 1 = on\nsmart={}\n# calendar link (Google: Settings > your calendar > Secret address in iCal format) for meeting hints; empty = off\ncalendar_url={}\n# a short chime with meeting, low battery and break hints: 1 = on\nsmart_sound={}\n# display for the notch and bar: 0 = primary, 2 = second display, and so on\nmonitor={}\n# extra beside the idle clock: 0 = off, 1 = tasks left, 2 = focus minutes today, 3 = CPU and RAM, 4 = next meeting\nidle_glance={}\n# progress line on the notch while a focus session runs: 1 = on\nidle_focus_bar={}\n# next meeting glance (idle_glance=4) shows meetings starting within this many hours (1 to 12)\nidle_meeting_hours={}\n# thin line along the bottom of the idle notch: how much of your workday has passed: 1 = on\nday_line={}\n# workday for the day line, in hours (0 to 24)\nday_start={}\nday_end={}\n# scroll up over the idle notch cycles time, date, tasks left and focus today: 1 = on\nidle_cycle={}\n# a state glyph on the notch: dot, ring (mic in use), amber square (battery low), arc (focus session): 1 = on\nstate_dot={}\n# now and then the buddy peeks over the bottom edge of the notch (robot and kitty): 1 = on\npeek={}\n",
+        "# Nock settings (1 = on, 0 = off)\nhover_expand={}\neq_animation={}\nclock_24h={}\nreserve_space={}\ntop_bar={}\n# buddy: 0 = off, 2 = cat, 5 = robot, 6 = ronin, 7 = courier, 8 = necromancer (1, 3 and 4 were retired and now give the robot)\nbuddy={}\n# fight scenes now and then (needs a buddy): 1 = on\nscenes={}\n# average minutes between scenes (1 to 60)\nscene_min={}\n# CPU, RAM and network rate read-out on the top bar: 1 = on\nstats={}\n# draw the same read-out over the Windows taskbar, right-aligned (takes it off the top bar): 1 = on\nstats_taskbar={}\n# top bar clock: 0 = digital, 1 = analog, 2 = binary, 3 = countdown to Friday\nclock_style={}\n# minutes between water reminders (0 = off)\nwater_min={}\n# after a focus session start a 5 minute break, then focus again: 1 = on\nauto_break={}\n# minutes between look-away reminders for your eyes (0 = off)\neye_min={}\n# a Start Menu shortcut so typing Nock in Windows search finds it: 1 = on\nstart_menu={}\n# hide the notch and bar while a full-screen app or game is in front: 1 = on\nfs_hide={}\n# keep the notch and bar hidden until the pointer touches the top edge: 1 = on\nauto_hide={}\n# fade the notch out while a window covers it, and back in when the window moves away: 1 = on\nsmart_hide={}\n# close the open panel when the pointer leaves it or another window comes to the front: 1 = on\nauto_close={}\n# smart notch hints (low battery, take a break after 90 min at the PC, link/code copied): 1 = on\nsmart={}\n# calendar link (Google: Settings > your calendar > Secret address in iCal format) for meeting hints; empty = off\ncalendar_url={}\n# a short chime with meeting, low battery and break hints: 1 = on\nsmart_sound={}\n# display for the notch and bar: 0 = primary, 2 = second display, and so on\nmonitor={}\n# extra beside the idle clock: 0 = off, 1 = tasks left, 2 = focus minutes today, 3 = CPU and RAM, 4 = next meeting\nidle_glance={}\n# progress line on the notch while a focus session runs: 1 = on\nidle_focus_bar={}\n# next meeting glance (idle_glance=4) shows meetings starting within this many hours (1 to 12)\nidle_meeting_hours={}\n# thin line along the bottom of the idle notch: how much of your workday has passed: 1 = on\nday_line={}\n# workday for the day line, in hours (0 to 24)\nday_start={}\nday_end={}\n# scroll up over the idle notch cycles time, date, tasks left and focus today: 1 = on\nidle_cycle={}\n# a state glyph on the notch: dot, ring (mic in use), amber square (battery low), arc (focus session): 1 = on\nstate_dot={}\n# now and then the buddy peeks over the bottom edge of the notch (robot and kitty): 1 = on\npeek={}\n",
         b(c.hover_expand),
         b(c.eq_animation),
         b(c.clock_24h),
@@ -272,6 +278,7 @@ pub fn save_config(c: &Config) {
         b(c.scenes),
         c.scene_min,
         b(c.stats),
+        b(c.stats_taskbar),
         c.clock_style,
         c.water_min,
         b(c.auto_break),

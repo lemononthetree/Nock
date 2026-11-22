@@ -5,6 +5,8 @@ mod app;
 #[cfg(windows)]
 mod bar;
 #[cfg(windows)]
+mod taskbar;
+#[cfg(windows)]
 mod buddy;
 mod cal;
 mod cast;

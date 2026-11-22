@@ -268,6 +268,7 @@ pub struct App {
     peek: bool,
     fs_peekable: bool,
     pub bar: Option<crate::bar::Bar>,
+    pub taskbar: Option<crate::taskbar::TaskbarReadout>,
     pub pop: Option<crate::pop::Pop>,
     pub page: Page,
     pub eq_phase: f32,
@@ -547,6 +548,7 @@ impl App {
             peek: false,
             fs_peekable: false,
             bar: None,
+            taskbar: None,
             pop: None,
             page: Page::Media,
             eq_phase: 0.0,
@@ -1343,7 +1345,7 @@ impl App {
 
     /// Start or stop the 3 s CPU/RAM/network sampling to match the setting.
     pub fn sync_stats(&mut self) {
-        if self.cfg.stats || self.glance_kind() == 3 {
+        if self.cfg.stats || self.cfg.stats_taskbar || self.glance_kind() == 3 {
             self.cpu_prev = sys::cpu_times();
             self.net.reset();
             self.set_timer(T_STATS, 3000);
@@ -1530,10 +1532,11 @@ impl App {
     }
 
     fn on_stats_tick(&mut self) {
-        // sampled for the bar read-out and/or the idle glance, never otherwise
-        let on_bar = self.cfg.stats && self.bar_visible();
+        // sampled for the top-bar read-out, the taskbar read-out and/or the idle glance
+        let on_bar = self.cfg.stats && !self.cfg.stats_taskbar && self.bar_visible();
+        let on_taskbar = self.taskbar_visible();
         let on_pill = self.glance_kind() == 3 && !self.hidden;
-        if !on_bar && !on_pill {
+        if !on_bar && !on_taskbar && !on_pill {
             // a resumed read-out must not treat the pause as traffic
             self.net.reset();
             return;
@@ -1542,7 +1545,7 @@ impl App {
         let (di, dt) = (idle.wrapping_sub(self.cpu_prev.0), total.wrapping_sub(self.cpu_prev.1));
         self.cpu_prev = (idle, total);
         let cpu = if dt == 0 { 0 } else { (100 - (di.min(dt) * 100 / dt)) as u32 };
-        let (rx, tx) = if on_bar {
+        let (rx, tx) = if on_bar || on_taskbar {
             self.net.sample()
         } else {
             self.net.reset();
@@ -1562,6 +1565,11 @@ impl App {
                 }
                 self.render();
             }
+        }
+        if on_taskbar {
+            // every tick also re-places the window, so a moved / resized / sliding
+            // taskbar is followed without a timer of its own
+            self.render_taskbar();
         }
     }
 
@@ -2817,6 +2825,7 @@ impl App {
             }
             self.sync_timers();
             self.sync_bar();
+            self.sync_taskbar();
         }
         if !fs && self.fade_to < 1.0 {
             self.fade_to = 1.0;
@@ -2838,12 +2847,14 @@ impl App {
             self.rebuild_gfx(new_scale);
         }
         self.rebuild_bar();
+        self.rebuild_taskbar();
         self.rebuild_pop();
         self.rebuild_buddy();
         self.rebuild_stage();
         self.update_reserve();
         self.render();
         self.render_bar();
+        self.render_taskbar();
     }
 
     // ------------------------------------------------------------ controls --

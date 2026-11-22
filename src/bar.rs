@@ -145,6 +145,11 @@ impl App {
             if let Some(b) = &self.bar {
                 let _ = SetWindowPos(b.hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
             }
+            if let Some(t) = &self.taskbar {
+                if t.shown {
+                    let _ = SetWindowPos(t.hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
+                }
+            }
             if let Some(st) = &self.stage {
                 if st.active {
                     let _ = SetWindowPos(st.hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
@@ -185,16 +190,19 @@ impl App {
 
     /// Windows switched light/dark (or another system setting changed).
     pub fn on_theme_change(&mut self) {
-        if !self.bar_visible() {
-            return;
-        }
         let light = sys::light_theme();
-        let changed = self.bar.as_ref().map(|b| b.light != light).unwrap_or(false);
-        if changed {
-            if let Some(b) = self.bar.as_mut() {
-                b.light = light;
+        if self.bar_visible() {
+            let changed = self.bar.as_ref().map(|b| b.light != light).unwrap_or(false);
+            if changed {
+                if let Some(b) = self.bar.as_mut() {
+                    b.light = light;
+                }
+                self.render_bar();
             }
-            self.render_bar();
+        }
+        let changed = self.taskbar.as_ref().map(|t| t.light != light).unwrap_or(false);
+        if changed && self.taskbar_visible() {
+            self.render_taskbar();
         }
     }
 
@@ -228,7 +236,8 @@ impl App {
         let (vol, muted, has_vol) = (self.volume, self.muted, self.has_volume);
         let clock24 = self.cfg.clock_24h;
         let clock_style = self.cfg.clock_style;
-        let stats = self.stats;
+        // The same read-out lives over the Windows taskbar when that is chosen.
+        let stats = if self.cfg.stats_taskbar { None } else { self.stats };
         let accent = self.accent;
         let active = self.pop_kind();
         // connecting: the icon breathes while a Wi-Fi / Bluetooth attempt is running
