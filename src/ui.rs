@@ -785,24 +785,25 @@ pub fn rate_text(bps: u64) -> String {
     }
 }
 
-/// "340KB/s", "1.2MB/s", "0B/s": the same rate with its unit, for the top bar.
-/// The unit steps up as the number grows, so the wide read-out stays short.
+/// "340KB/s", "1.2MB/s", "0.5KB/s": the same rate with its unit, for the top bar.
+/// KB/s is the smallest unit, so a slow trickle still reads as a fraction of one.
 pub fn rate_short(bps: u64) -> String {
-    let b = bps as f64;
-    const KB: f64 = 1024.0;
-    if b < KB {
-        format!("{:.0}B/s", b)
-    } else if b < KB * KB {
-        format!("{:.0}KB/s", b / KB)
-    } else if b < KB * KB * KB {
-        let mb = b / (KB * KB);
+    let kb = bps as f64 / 1024.0;
+    if kb < 1000.0 {
+        if kb < 10.0 {
+            format!("{:.1}KB/s", kb)
+        } else {
+            format!("{:.0}KB/s", kb)
+        }
+    } else if kb < 1000.0 * 1024.0 {
+        let mb = kb / 1024.0;
         if mb < 10.0 {
             format!("{:.1}MB/s", mb)
         } else {
             format!("{:.0}MB/s", mb)
         }
     } else {
-        let gb = b / (KB * KB * KB);
+        let gb = kb / (1024.0 * 1024.0);
         if gb < 10.0 {
             format!("{:.1}GB/s", gb)
         } else {
@@ -1506,10 +1507,11 @@ mod tests {
         assert_eq!(rate_text(100 * 1024), "100 KB/s");
         assert_eq!(rate_text(1024 * 1024), "1.0 MB/s");
         assert_eq!(rate_text(2_500_000), "2.4 MB/s");
-        // the bar keeps the unit attached so it reads "↓1.2MB/s ↑340KB/s"
-        assert_eq!(rate_short(0), "0B/s");
-        assert_eq!(rate_short(512), "512B/s");
-        assert_eq!(rate_short(1024), "1KB/s");
+        // the bar keeps the unit attached so it reads "↓ 1.2MB/s ↑ 340KB/s";
+        // KB/s is the floor, so a trickle shows as a fraction of one
+        assert_eq!(rate_short(0), "0.0KB/s");
+        assert_eq!(rate_short(512), "0.5KB/s");
+        assert_eq!(rate_short(1024), "1.0KB/s");
         assert_eq!(rate_short(348_160), "340KB/s");
         assert_eq!(rate_short(1_258_291), "1.2MB/s");
         assert_eq!(rate_short(60 * 1024 * 1024), "60MB/s");

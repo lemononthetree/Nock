@@ -148,7 +148,7 @@ A thin translucent bar runs along the top of the screen and the notch hangs from
 
 **Clock style** (tray → *Clock style*): digital (default), analog, binary, or "hours until Friday". **24-hour clock** (tray → *24-hour clock*, or `clock_24h=1`) shows 13:05 instead of 1:05 PM on the bar, the pill and the clock pop-up.
 
-**CPU, RAM and network** (tray → *CPU, RAM and network on the bar*): two short lines, `CPU 12% RAM 63%` over `↓ 1.2MB/s ↑ 340KB/s`, off by default. The rate units step up from B/s to KB/s, MB/s and GB/s as the numbers grow.
+**CPU, RAM and network** (tray → *CPU, RAM and network on the bar*): one line, `CPU 12% RAM 63%   ↓ 1.2MB/s ↑ 340KB/s`, off by default. The rate units step up from KB/s to MB/s and GB/s; below 1 KB/s a fraction is shown, such as `0.5KB/s`.
 
 A dropdown closes when the pointer leaves it, when you click into another window, or when you click its icon again. The bar follows the Windows light/dark setting; the notch itself always stays black. It reserves its space like the taskbar does, so maximised windows start below it. Tray → *Top bar* turns it off (the old notch-only behaviour returns); `top_bar` in `config.ini` does the same.
 

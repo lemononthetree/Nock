@@ -386,23 +386,18 @@ impl App {
         }
 
         if let Some(s) = stats {
-            // read-out only: not clickable, so it is not in `hits`. Two short lines
-            // inside a narrow slot, so the numbers cannot push into the app name.
-            let r = item(126.0);
-            g.text(
-                &format!("CPU {}% RAM {}%", s.cpu, s.mem),
-                Rect::new(r.x, r.y - 4.0, r.w, 14.0),
-                &f.tiny,
-                th.t2,
-                Align::Center,
-            );
+            // read-out only: not clickable, so it is not in `hits`. One line, with a
+            // wide gap so the machine numbers and the network numbers read apart.
+            let r = item(214.0);
             g.text(
                 &format!(
-                    "\u{2193} {} \u{2191} {}",
+                    "CPU {}% RAM {}%   \u{2193} {} \u{2191} {}",
+                    s.cpu,
+                    s.mem,
                     crate::ui::rate_short(s.rx),
                     crate::ui::rate_short(s.tx)
                 ),
-                Rect::new(r.x, r.y + 8.0, r.w, 14.0),
+                r,
                 &f.tiny,
                 th.t2,
                 Align::Center,
