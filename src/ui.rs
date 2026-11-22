@@ -812,7 +812,7 @@ pub fn rate_short(bps: u64) -> String {
     }
 }
 
-/// The Network tile: download above, upload below, and a download sparkline.
+/// The Network tile: download and upload on one line, with a download sparkline.
 fn net_tile(g: &Gfx, r: Rect, rx: u64, tx: u64, hist: &[f32], adapter: &str, ca: f32) {
     let f = &g.fonts;
     g.fill_rrect(r, 20.0, SURF.fade(ca));
@@ -828,10 +828,11 @@ fn net_tile(g: &Gfx, r: Rect, rx: u64, tx: u64, hist: &[f32], adapter: &str, ca:
             Align::Right,
         );
     }
+    // one line, in the same type as the other tiles' text
+    let y = r.y + 34.0;
     for (i, (glyph, value, col)) in [('\u{2193}', rx, C_CPU), ('\u{2191}', tx, C_UP)].iter().enumerate() {
-        let y = r.y + 32.0 + i as f32 * 18.0;
-        g.text(&glyph.to_string(), Rect::new(r.x + 16.0, y, 14.0, 18.0), &f.small, col.fade(ca), Align::Left);
-        g.text(&rate_text(*value), Rect::new(r.x + 34.0, y, 160.0, 18.0), &f.small, T1.fade(ca), Align::Left);
+        let x = r.x + 16.0 + i as f32 * 126.0;
+        g.text(&format!("{} {}", glyph, rate_text(*value)), Rect::new(x, y, 118.0, 30.0), &f.body, col.fade(ca), Align::Left);
     }
     // download over the last 40 samples, scaled to its own peak
     let (bx, by, bw, bh) = (r.x + 16.0, r.y + r.h - 21.0, r.w - 32.0, 13.0);

@@ -386,9 +386,11 @@ impl App {
         }
 
         if let Some(s) = stats {
-            // read-out only: not clickable, so it is not in `hits`. One line, with a
-            // wide gap so the machine numbers and the network numbers read apart.
-            let r = item(214.0);
+            // read-out only: not clickable, so it is not in `hits`. Uses the 13 px
+            // semibold line whenever the screen is wide enough to keep it clear of
+            // the centred capsule, and the 11 px line when it is not.
+            let roomy = item(0.0).x - 254.0 >= w / 2.0 + 96.0;
+            let r = item(if roomy { 254.0 } else { 214.0 });
             g.text(
                 &format!(
                     "CPU {}% RAM {}%   \u{2193} {} \u{2191} {}",
@@ -398,8 +400,8 @@ impl App {
                     crate::ui::rate_short(s.tx)
                 ),
                 r,
-                &f.tiny,
-                th.t2,
+                if roomy { &f.menu } else { &f.tiny },
+                th.t1,
                 Align::Center,
             );
         }
